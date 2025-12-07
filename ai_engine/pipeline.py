@@ -65,9 +65,9 @@ def run_full_pipeline(job_id, input_source, is_url=False):
         # 1. Acquire Media
         if is_url:
             update_job_status(job_id, "processing", 15, "Downloading media...")
-            file_path, title = Downloader.download_url(input_source)
+            file_path, title, error_msg = Downloader.download_url(input_source)
             if not file_path:
-                raise Exception("Download failed")
+                raise Exception(f"Download failed: {error_msg}")
         else:
             file_path = input_source
             title = os.path.basename(file_path)
@@ -84,27 +84,17 @@ def run_full_pipeline(job_id, input_source, is_url=False):
         update_job_status(job_id, "processing", 50, "Diarizing (Detecting Speakers)...")
         diarization_segments = diarizer.diarize(job_id, file_path)
         
-        # 4. Alignment (Simple Overlap Mapping)
-        # Map speaker labels to Whisper segments
-        # This is a simplified O(N*M) - can be optimized
+        # 4. Alignment
+        # Use precise word-level alignment
+        update_job_status(job_id, "processing", 55, "Aligning transcript with speakers...")
         if diarization_segments:
-            for w_seg in segments:
-                # Find speaker with max overlap
-                w_start, w_end = w_seg['start'], w_seg['end']
-                best_speaker = "Unknown"
-                max_overlap = 0
-                
-                for d_seg in diarization_segments:
-                    # Calculate overlap
-                    overlap_start = max(w_start, d_seg['start'])
-                    overlap_end = min(w_end, d_seg['end'])
-                    overlap = max(0, overlap_end - overlap_start)
-                    
-                    if overlap > max_overlap:
-                        max_overlap = overlap
-                        best_speaker = d_seg['speaker']
-                
-                w_seg['speaker'] = best_speaker
+             # Segments now contain 'words'
+             aligned = diarizer.align_transcript_with_diarization(diarization_segments, segments)
+             # Replace segments with aligned version which has speaker data
+             segments = aligned
+        else:
+             # Fallback if diarization failed to produce segments
+             pass
 
         # 5. Summarization
         update_job_status(job_id, "processing", 70, "Summarizing...")

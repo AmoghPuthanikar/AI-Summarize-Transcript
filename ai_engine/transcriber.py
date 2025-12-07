@@ -14,17 +14,29 @@ class Transcriber:
         update_job_status(job_id, "processing", 20, "Transcribing audio (Faster-Whisper)...")
         try:
             # Enforce English Language
-            segments, info = self.model.transcribe(file_path, beam_size=5, language="en")
+            segments, info = self.model.transcribe(file_path, beam_size=5, language="en", word_timestamps=True)
             
             # Format segments to match previous structure
             formatted_segments = []
             full_text = []
             
             for segment in segments:
+                # Capture words if available
+                words = []
+                if segment.words:
+                    for w in segment.words:
+                        words.append({
+                            "start": w.start,
+                            "end": w.end,
+                            "word": w.word,
+                            "probability": w.probability
+                        })
+
                 formatted_segments.append({
                     "start": segment.start,
                     "end": segment.end,
-                    "text": segment.text
+                    "text": segment.text,
+                    "words": words
                 })
                 full_text.append(segment.text)
             

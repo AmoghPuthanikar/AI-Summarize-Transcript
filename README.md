@@ -1,4 +1,4 @@
-# AI Transcription & Summarization Tool
+# AI Transcription, Diarization & Summarization Tool
 
 A local, privacy-focused web application that uses advanced AI models to transcribe, differentiate speakers (diarization), and summarize audio/video content.
 
@@ -6,36 +6,32 @@ A local, privacy-focused web application that uses advanced AI models to transcr
 
 Before setting up the project, ensure you have the following installed on your Windows system:
 
-1.  **Python 3.8 to 3.11** (3.12 may have compatibility issues with some ML libraries)
+1.  **Python 3.10 or 3.11** (recommended)
     - [Download Python](https://www.python.org/downloads/)
-2.  **MongoDB Community Server** (for database)
-    - [Download MongoDB](https://www.mongodb.com/try/download/community)
-    - Run the installer and ensure "Install MongoDB as a Service" is checked.
-3.  **FFmpeg** (Required for processing audio files)
+    - **Check "Add Python to PATH"** during installation.
+2.  **Microsoft Visual C++ Build Tools** (Required for some AI libraries)
+    - [Download Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+    - Install "Desktop development with C++" workload.
+3.  **FFmpeg** (Required for audio processing)
     - [Download FFmpeg](https://ffmpeg.org/download.html)
-    - **Important**: You must add the `bin` folder of FFmpeg to your System PATH environment variable.
-    - Type `ffmpeg -version` in CMD to verify.
-4.  **NVIDIA CUDA Toolkit** (Optional, for GPU acceleration)
-    - If you have an NVIDIA GPU, install CUDA 11.8 or 12.1 to speed up transcription by 10x-50x.
-    - [Download CUDA](https://developer.nvidia.com/cuda-downloads)
+    - Extract and add the `bin` folder to your **System PATH**.
+    - Verify by opening CMD and typing: `ffmpeg -version`
+4.  **MongoDB Community Server**
+    - [Download MongoDB](https://www.mongodb.com/try/download/community)
+    - Install as a Service.
 
 ## 🛠️ Installation Guide
 
-1.  **Clone or Download the Project**
+1.  **Clone the Project**
 
     ```powershell
-    # Navigate to the project directory
     cd "path\to\AI-summerizztion"
     ```
 
-2.  **Create a Virtual Environment**
-    It's properly isolated dependencies.
+2.  **Create Virtual Environment**
 
     ```powershell
-    # Create venv
     python -m venv venv
-
-    # Activate venv
     .\venv\Scripts\activate
     ```
 
@@ -45,49 +41,59 @@ Before setting up the project, ensure you have the following installed on your W
     pip install -r requirements.txt
     ```
 
-4.  **Install PyTorch (GPU Version)**
-    The default `pip install` might install the CPU version. To enable GPU support:
+4.  **Enable GPU Support (Recommended)**
+    To make transcription 10x-50x faster (requires NVIDIA GPU):
 
     ```powershell
-    # For CUDA 11.8
+    # Uninstall CPU torch first
+    pip uninstall torch torchvision torchaudio -y
+
+    # Install CUDA 11.8 version
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    # OR for CUDA 12.1
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     ```
 
-5.  **HuggingFace Token (Optional)**
-    For Speaker Diarization (`pyannote.audio`):
-    - Create a `.env` file in the root.
-    - Add: `HF_TOKEN=your_huggingface_token`
-    - (Required only if you want to use gated models, though standard models might work without it).
+5.  **Setup Authentication (Important)**
+
+    **A. HuggingFace Token (For Diarization)**
+
+    1.  Get a token from [Hugging Face](https://huggingface.co/settings/tokens).
+    2.  Accept user agreements for `pyannote/speaker-diarization-3.1` and `pyannote/segmentation-3.0`.
+    3.  Create a `.env` file in the root directory:
+        ```env
+        HF_TOKEN=hf_yourtokenhere...
+        ```
+
+    **B. YouTube Cookies (For Downloads)**
+    _Fixes "Sign in to confirm you’re not a bot" errors._
+
+    1.  Install "Get cookies.txt LOCALLY" extension on Chrome/Firefox.
+    2.  Go to YouTube (logged in).
+    3.  Export cookies and save the file as `cookies.txt` in this project folder (`d:\VS Code\Python\AI-summerizztion\cookies.txt`).
 
 ## 🚀 How to Run
 
-1.  **Start MongoDB**
+1.  **Activate Environment** (if not active)
 
-    - It usually runs automatically as a Windows Service.
-    - If not, start it manually: `net start MongoDB`.
+    ```powershell
+    .\venv\Scripts\activate
+    ```
 
-2.  **Run the Application**
-    Make sure your virtual environment is active (`(venv)` shows in terminal).
+2.  **Start the App**
 
     ```powershell
     python app.py
     ```
 
-3.  **Access the App**
-    - Open your browser and go to: `http://127.0.0.1:5000`
+3.  **Open in Browser**
+    - Go to: http://127.0.0.1:5000
 
-## ⚠️ Common Issues & Fixes
+_Note: The first run will download models (approx 2GB). Please be patient._
 
-- **`FileNotFoundError: [WinError 2] The system cannot find the file specified`**:
-  - This means **FFmpeg** is missing or not in PATH. Install FFmpeg and add it to System Variables.
-- **Application Crashing on Large Files**:
-  - Ensure you have enough RAM (8GB+ recommended).
-- **"Object of type ObjectId is not JSON serializable"**:
-  - This bug was fixed in V1.0. If you see it, restart the server.
+## ⚠️ Common Issues
 
----
-
-**Version**: 1.0
-**Author**: Antigravity Agent
+- **`DownloadError: Sign in to confirm...`**:
+  - Missing `cookies.txt`. See Step 5B above.
+- **`ModuleNotFoundError`**:
+  - Ensure `venv` is activated.
+- **`torchcodec` Warning**:
+  - You can safely ignore "torchcodec is not installed correctly" warnings if the app starts.
