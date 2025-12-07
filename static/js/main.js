@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('content-row').classList.remove('d-none');
         
         // Render Summary
-        document.getElementById('summary-content').innerText = data.summary;
+        document.getElementById('summary-content').innerHTML = marked.parse(data.summary);
         
         // Render Sentiment
         const sent = data.sentiment; // {neg: 0.1, neu: 0.8, pos: 0.1, compound: ...}
