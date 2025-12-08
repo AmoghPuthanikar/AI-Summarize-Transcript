@@ -1,183 +1,345 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Upload & Process Logic
+    // Check which page we are on
+    if (document.getElementById('drop-zone')) {
+        initIndexPage();
+    } else if (document.getElementById('result-container')) {
+        initResultPage();
+    }
+});
+
+// --- Index Page Logic ---
+function initIndexPage() {
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const urlBtn = document.getElementById('url-btn');
     const urlInput = document.getElementById('url-input');
-    const progressSection = document.getElementById('progress-section');
-    const progressBar = document.getElementById('progress-bar');
-    const progressStatus = document.getElementById('progress-status');
-    const progressDetail = document.getElementById('progress-detail');
 
-    if (dropZone) {
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-primary'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-primary'));
-        dropZone.addEventListener('drop', (e) => {
+    // Drag & Drop
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('bg-dark-subtle');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('bg-dark-subtle');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('bg-dark-subtle');
+        if (e.dataTransfer.files.length) {
+            handleFileUpload(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+            handleFileUpload(fileInput.files[0]);
+        }
+    });
+
+    // URL Processing
+    urlBtn.addEventListener('click', () => {
+        const url = urlInput.value.trim();
+        if (url) {
+            handleUrlProcess(url);
+        }
+    });
+}
+
+function showProgress() {
+    document.getElementById('progress-section').classList.remove('d-none');
+    document.querySelector('.glass-panel').classList.add('d-none'); // Hide input panel
+}
+
+function updateProgress(status, progress, message) {
+    document.getElementById('progress-status').innerText = status.toUpperCase();
+    document.getElementById('progress-detail').innerText = message;
+    document.getElementById('progress-bar').style.width = progress + '%';
+}
+
+function handleFileUpload(file) {
+    showProgress();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.job_id) {
+            pollStatus(data.job_id);
+        } else {
+            alert('Upload failed: ' + (data.error || 'Unknown error'));
+            location.reload();
+        }
+    })
+    .catch(e => {
+        alert('Error: ' + e);
+        location.reload();
+    });
+}
+
+function handleUrlProcess(url) {
+    showProgress();
+    fetch('/process-url', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: url})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.job_id) {
+            pollStatus(data.job_id);
+        } else {
+            alert('Processing failed: ' + (data.error || 'Unknown error'));
+            location.reload();
+        }
+    })
+    .catch(e => {
+        alert('Error: ' + e);
+        location.reload();
+    });
+}
+
+function pollStatus(jobId) {
+    const interval = setInterval(() => {
+        fetch(`/status/${jobId}`)
+        .then(r => r.json())
+        .then(status => {
+            updateProgress(status.status, status.progress, status.message);
+            if (status.status === 'completed') {
+                clearInterval(interval);
+                window.location.href = `/result/${jobId}`;
+            } else if (status.status === 'failed') {
+                clearInterval(interval);
+                alert('Job failed: ' + status.message);
+                location.reload();
+            }
+        });
+    }, 2000); // Poll every 2 seconds
+}
+
+// --- Result Page Logic ---
+let currentTranscript = [];
+
+function initResultPage() {
+    const container = document.getElementById('result-container');
+    const jobId = container.dataset.jobId;
+
+    if (!jobId) return;
+
+    // Load Data
+    fetch(`/api/result/${jobId}`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        renderResult(data);
+    })
+    .catch(e => console.error(e));
+
+    // Event Listeners
+    document.getElementById('search-input').addEventListener('input', (e) => {
+        filterTranscript(e.target.value);
+    });
+
+    document.getElementById('btn-download-pdf').addEventListener('click', () => {
+        window.location.href = `/download/pdf/${jobId}`;
+    });
+
+    document.getElementById('btn-download-srt').addEventListener('click', () => {
+        window.location.href = `/download/srt/${jobId}`;
+    });
+    
+    // Translation Listener
+    // Note: The button has onclick="translateSummary()" in HTML, 
+    // so we must expose this function globally or attach listener here if we remove onclick.
+    // For safety, let's attach listener via ID and also expose it just in case.
+    const translateBtn = document.getElementById('translateBtn');
+    if (translateBtn) {
+         translateBtn.addEventListener('click', translateSummary);
+    }
+}
+
+function renderResult(data) {
+    // Hide loading, show content
+    document.getElementById('loading-state').classList.add('d-none');
+    document.getElementById('content-row').classList.remove('d-none');
+
+    // Summary
+    document.getElementById('summary-content').innerText = data.summary || "No summary available.";
+
+    // Sentiment
+    if (data.sentiment) {
+        document.getElementById('sentiment-pos').innerText = (data.sentiment.pos * 100).toFixed(0) + '%';
+        document.getElementById('sentiment-neu').innerText = (data.sentiment.neu * 100).toFixed(0) + '%';
+        document.getElementById('sentiment-neg').innerText = (data.sentiment.neg * 100).toFixed(0) + '%';
+    }
+
+    // Transcript
+    currentTranscript = data.transcript || [];
+    renderTranscriptItems(currentTranscript);
+
+    // Chapters
+    if (data.chapters) {
+        renderChapters(data.chapters);
+    }
+}
+
+function renderChapters(chapters) {
+    const list = document.getElementById('chapters-list');
+    list.innerHTML = '';
+
+    if (!chapters || chapters.length === 0) {
+        list.innerHTML = '<span class="text-muted small text-center">No chapters generated.</span>';
+        return;
+    }
+
+    chapters.forEach(chap => {
+        const item = document.createElement('a');
+        item.href = "#";
+        item.className = 'list-group-item list-group-item-action bg-transparent text-light border-secondary d-flex justify-content-between align-items-start py-2 px-1';
+        
+        item.innerHTML = `
+            <div class="ms-2 me-auto">
+                <div class="fw-bold small text-info">${chap.title}</div>
+                <small class="text-muted" style="font-size: 0.75rem;">${formatTime(chap.start)} - ${formatTime(chap.end)}</small>
+            </div>
+            <i class="bi bi-play-circle text-secondary"></i>
+        `;
+        
+        item.addEventListener('click', (e) => {
             e.preventDefault();
-            dropZone.classList.remove('border-primary');
-            if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+            // Scroll transcript to this time
+            scrollToTime(chap.start);
         });
 
-        fileInput.addEventListener('change', () => {
-            if (fileInput.files.length) uploadFile(fileInput.files[0]);
-        });
+        list.appendChild(item);
+    });
+}
 
-        urlBtn.addEventListener('click', () => {
-            const url = urlInput.value.trim();
-            if (url) processUrl(url);
-        });
-    }
-
-    // Result Page Logic
-    const resultContainer = document.getElementById('result-container');
-    if (resultContainer) {
-        const jobId = resultContainer.dataset.jobId;
-        pollStatus(jobId);
-    }
-
-    function uploadFile(file) {
-        const formData = new FormData();
-        formData.append('file', file);
-        startProcess('/upload', formData);
-    }
-
-    function processUrl(url) {
-        startProcess('/process-url', JSON.stringify({ url: url }), true);
-    }
-
-    function startProcess(endpoint, body, isJson = false) {
-        showProgress();
-        const headers = isJson ? { 'Content-Type': 'application/json' } : {};
-        
-        fetch(endpoint, { method: 'POST', headers: headers, body: body })
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) throw new Error(data.error);
-                pollStatus(data.job_id); // In Index page, polling redirects;
-                // Wait, if we are on index, we should redirect to result page immediately?
-                // Or poll here until "processing" starts then redirect?
-                // Let's redirect to Result page immediately and poll there.
-                window.location.href = `/result/${data.job_id}`;
-            })
-            .catch(err => showError(err.message));
-    }
-
-    function pollStatus(jobId) {
-        const interval = setInterval(() => {
-            fetch(`/status/${jobId}`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.status === 'processing' || data.status === 'queued') {
-                        // Update UI if on Result page?
-                        // Actually, if we are on Result page, we show progress until complete.
-                         updateProgressUI(data);
-                    } else if (data.status === 'completed') {
-                        clearInterval(interval);
-                        // Fetch Result Data and Render
-                        fetchResultData(data.result.transcript_id);
-                    } else if (data.status === 'failed') {
-                        clearInterval(interval);
-                        showError(data.message);
-                    }
-                });
-        }, 2000);
-    }
+function scrollToTime(seconds) {
+    // Find the transcript item closest to this time
+    // We can assume transcript is sorted or just find first item >= time
+    // But items format is {start, end, text...}
+    // We need to access DOM elements.
+    // Let's re-render or just find the element?
+    // Since we render all items, we can try to find the match in DOM.
+    // Ideally we should add data-start attribute to transcript items.
     
-    function updateProgressUI(data) {
-        // If we are on result page, we might show a progress bar in the Loading State
-        const loadingState = document.getElementById('loading-state');
-        if(loadingState) {
-            loadingState.innerHTML = `
-                <div class="spinner-border text-primary" role="status"></div>
-                <h5 class="mt-3">${data.message}</h5>
-                <div class="progress w-50 mx-auto mt-2" style="height: 5px;">
-                    <div class="progress-bar" style="width: ${data.progress}%"></div>
-                </div>
-            `;
-        }
-    }
-
-    function fetchResultData(transcriptId) {
-        // We need an endpoint to get the transcript result by ID or Job ID
-        // Currently missing in app.py. I'll fetch via a new endpoint /api/result-data/<job_id>
-        // For now, assuming we added it.
-        const jobId = resultContainer.dataset.jobId;
-        fetch(`/api/result/${jobId}`)
-            .then(r => r.json())
-            .then(data => renderDashboard(data));
-    }
-
-    function renderDashboard(data) {
-        document.getElementById('loading-state').classList.add('d-none');
-        document.getElementById('content-row').classList.remove('d-none');
-        
-        // Render Summary
-        document.getElementById('summary-content').innerHTML = marked.parse(data.summary);
-        
-        // Render Sentiment
-        const sent = data.sentiment; // {neg: 0.1, neu: 0.8, pos: 0.1, compound: ...}
-        document.getElementById('sentiment-pos').innerText = `${Math.round(sent.pos * 100)}%`;
-        document.getElementById('sentiment-neg').innerText = `${Math.round(sent.neg * 100)}%`;
-        document.getElementById('sentiment-neu').innerText = `${Math.round(sent.neu * 100)}%`;
-
-        // Render Transcript
+    // For now, let's find it by iterating our currentTranscript data to find index
+    // then finding the nth child.
+    const idx = currentTranscript.findIndex(t => t.start >= seconds);
+    if (idx !== -1) {
         const container = document.getElementById('transcript-content');
-        container.innerHTML = '';
-        data.transcript.forEach(seg => {
-            const div = document.createElement('div');
-            div.className = 'transcript-item mb-3 p-2 rounded hover-bg-dark';
-            div.innerHTML = `
-                <div class="d-flex justify-content-between small text-muted mb-1">
-                    <span class="fw-bold text-info">${seg.speaker || 'Unknown'}</span>
-                    <span>${formatTime(seg.start)}</span>
-                </div>
-                <p class="mb-0 text-light">${seg.text}</p>
-            `;
-            container.appendChild(div);
-        });
+        const target = container.children[idx];
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Highlight effect
+            target.classList.add('bg-dark-subtle');
+            setTimeout(() => target.classList.remove('bg-dark-subtle'), 2000);
+        }
+    }
+}
+
+function renderTranscriptItems(items) {
+    const container = document.getElementById('transcript-content');
+    container.innerHTML = '';
+
+    if (items.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center mt-5">No transcript data.</p>';
+        return;
     }
 
-        // Initialize Search
-        const searchInput = document.getElementById('search-input');
-        if (searchInput) {
-             searchInput.addEventListener('input', (e) => {
-                 const term = e.target.value.toLowerCase();
-                 document.querySelectorAll('.transcript-item').forEach(item => {
-                     const text = item.querySelector('p').innerText.toLowerCase();
-                     if (text.includes(term)) {
-                         item.classList.remove('d-none');
-                     } else {
-                         item.classList.add('d-none');
-                     }
-                 });
-             });
-        }
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'transcript-item mb-3 p-3 border border-secondary rounded glass-panel-sm';
         
-        // Connect Export Buttons (Check existence first as they are dynamically rendered? No, they are static in HTML)
-        const pdfBtn = document.getElementById('btn-download-pdf');
-        if (pdfBtn) {
-            pdfBtn.addEventListener('click', () => {
-                window.open(`/download/pdf/${resultContainer.dataset.jobId}`, '_blank');
-            });
-        }
-        const srtBtn = document.getElementById('btn-download-srt');
-        if (srtBtn) {
-            srtBtn.addEventListener('click', () => {
-                window.open(`/download/srt/${resultContainer.dataset.jobId}`, '_blank');
-            });
-        }
-    // End of Export logic - no brace needed here as this is global scope inside DOMContentLoaded
+        const time = formatTime(item.start);
+        const speaker = item.speaker || 'Speaker';
+        
+        // Colorize speakers randomly or deterministically? 
+        // For now just simple text.
+        
+        div.innerHTML = `
+            <div class="d-flex justify-content-between text-muted small mb-1">
+                <span class="fw-bold text-info">${speaker}</span>
+                <span>${time}</span>
+            </div>
+            <p class="mb-0 text-light">${item.text}</p>
+        `;
+        container.appendChild(div);
+    });
+}
 
-    function showProgress() {
-        if(progressSection) progressSection.classList.remove('d-none');
+function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function filterTranscript(query) {
+    if (!query) {
+        renderTranscriptItems(currentTranscript);
+        return;
+    }
+    const lowerQ = query.toLowerCase();
+    const filtered = currentTranscript.filter(item => 
+        item.text.toLowerCase().includes(lowerQ) || 
+        (item.speaker && item.speaker.toLowerCase().includes(lowerQ))
+    );
+    renderTranscriptItems(filtered);
+}
+
+// Global for onclick attribute
+window.translateSummary = function() {
+    const btn = document.getElementById('translateBtn');
+    const loading = document.getElementById('translationLoading');
+    const select = document.getElementById('summaryLanguage');
+    const summaryEl = document.getElementById('summary-content');
+
+    const targetLang = select.value;
+    const currentSummary = summaryEl.innerText;
+
+    if (!targetLang) {
+        alert("Please select a language.");
+        return;
     }
 
-    function showError(msg) {
-        alert(msg); // Simple for now
-    }
-    
-    function formatTime(seconds) {
-        return new Date(seconds * 1000).toISOString().substr(11, 8);
-    }
-});
+    // UI Loading State
+    btn.disabled = true;
+    loading.classList.remove('d-none');
+
+    fetch('/api/translate-summary', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            summary: currentSummary,
+            target_lang: targetLang
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            summaryEl.innerText = data.translated_summary;
+        } else {
+            alert("Translation failed: " + data.error);
+        }
+    })
+    .catch(e => {
+        alert("Network error: " + e);
+    })
+    .finally(() => {
+        btn.disabled = false;
+        loading.classList.add('d-none');
+    });
+};

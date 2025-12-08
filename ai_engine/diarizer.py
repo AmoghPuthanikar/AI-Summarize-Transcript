@@ -204,7 +204,7 @@ class Diarizer:
             for seg in diarization_segments:
                 if seg["start"] <= time_point <= seg["end"]:
                     return seg["speaker"]
-            return "Unknown"
+            return "Speaker"
 
         # Flatten all words from ASR segments
         all_words = []

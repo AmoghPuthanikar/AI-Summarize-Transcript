@@ -21,10 +21,15 @@ class Summarizer:
         try:
             # Construct the prompt
             prompt = f"""
-            You are an expert summarizer. Please provide a concise, comprehensive summary of the following transcript.
-            Capture the key points, speakers (if implied), and actionable insights.
+            You are an expert summarizer. Summarize the following content directly and concisely.
             
-            Transcript:
+            Guidelines:
+            - Write in a direct, objective tone.
+            - Do NOT use phrases like "The transcript says", "The speaker discusses", or "The text mentions".
+            - Focus purely on the Information and Actionable Insights.
+            - Organize with clear headings or bullet points if appropriate.
+            
+            Content:
             {text}
             
             Summary:

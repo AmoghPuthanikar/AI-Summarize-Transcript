@@ -18,6 +18,7 @@ transcriber = None
 diarizer = None
 summarizer = None
 analyzer = None
+chapterizer = None
 
 def start_job(job_id, task_func, *args):
     """Submits a task to the thread pool."""
@@ -45,7 +46,7 @@ def run_job_wrapper(job_id, task_func, *args):
         update_job_status(job_id, "failed", 0, f"Error: {str(e)}")
 
 def run_full_pipeline(job_id, input_source, is_url=False):
-    global transcriber, diarizer, summarizer, analyzer
+    global transcriber, diarizer, summarizer, analyzer, chapterizer
     
     # Lazy Import inside function to avoid circular dependency
     from ai_engine.downloader import Downloader
@@ -53,11 +54,13 @@ def run_full_pipeline(job_id, input_source, is_url=False):
     from ai_engine.diarizer import Diarizer
     from ai_engine.summarizer import Summarizer
     from ai_engine.analyzer import Analyzer
+    from ai_engine.chapterizer import Chapterizer
 
     if transcriber is None: transcriber = Transcriber()
     if diarizer is None: diarizer = Diarizer()
     if summarizer is None: summarizer = Summarizer()
     if analyzer is None: analyzer = Analyzer()
+    if chapterizer is None: chapterizer = Chapterizer()
 
     update_job_status(job_id, "processing", 10, "Initializing pipeline...")
     
@@ -104,13 +107,18 @@ def run_full_pipeline(job_id, input_source, is_url=False):
         update_job_status(job_id, "processing", 80, "Analyzing sentiment...")
         sentiment = analyzer.analyze_sentiment(transcript_text)
 
-        # 7. Finalize
+        # 7. Chaptering
+        update_job_status(job_id, "processing", 82, "Segmenting chapters...")
+        chapters = chapterizer.process(job_id, segments)
+
+        # 8. Finalize
         result = {
             "title": title,
             "transcript": segments, # List of dicts with start, end, text, speaker
             "full_text": transcript_text,
             "summary": summary,
             "sentiment": sentiment,
+            "chapters": chapters,
             "file_path": file_path
         }
         

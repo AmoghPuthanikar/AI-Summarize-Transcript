@@ -103,5 +103,57 @@ def download_result(file_type, job_id):
         
     return send_file(filepath, as_attachment=True, download_name=f"transcript_{job_id}.{file_type}")
 
+@app.route('/api/translate-summary', methods=['POST'])
+def translate_summary():
+    """
+    Translate a summary to the target language.
+    Request: {"summary": "text", "source_lang": "en", "target_lang": "hi"}
+    Response: {"success": true, "translated_summary": "translated text", "target_lang": "hi"}
+    """
+    try:
+        data = request.json
+        summary = data.get('summary')
+        source_lang = data.get('source_lang', 'en')
+        target_lang = data.get('target_lang')
+        
+        if not summary:
+            return jsonify({"success": False, "error": "Summary text is required"}), 400
+        
+        if not target_lang:
+            return jsonify({"success": False, "error": "Target language is required"}), 400
+        
+        # If source and target are the same, return original
+        if source_lang == target_lang:
+            return jsonify({
+                "success": True,
+                "translated_summary": summary,
+                "source_lang": source_lang,
+                "target_lang": target_lang
+            })
+        
+        # Load translator
+        from ai_engine.translator import Translator
+        translator = Translator()
+        
+        # Validate target language
+        try:
+            validated_lang = translator.validate_language(target_lang)
+        except ValueError as e:
+            return jsonify({"success": False, "error": str(e)}), 400
+        
+        # Translate
+        translated = translator.translate(summary, source_lang, validated_lang)
+        
+        return jsonify({
+            "success": True,
+            "translated_summary": translated,
+            "source_lang": source_lang,
+            "target_lang": validated_lang
+        })
+        
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return jsonify({"success": False, "error": f"Translation failed: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
